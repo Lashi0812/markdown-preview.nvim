@@ -22,6 +22,7 @@ import blockUml from './blockPlantuml'
 import codeUml from './plantuml'
 import scrollToLine from './scroll'
 import { meta } from './meta';
+import markdownItAlphaList from "./markdown-it-alpha-list"
 import markdownImSize from './markdown-it-imsize'
 import { escape} from './utils';
 
@@ -89,18 +90,26 @@ export default class PreviewPage extends React.Component {
       pageTitle: '',
       theme: '',
       themeModeIsVisible: false,
+      spoilerMode: 'hint',
       contentEditable: false,
       disableFilename: 1
     }
     this.showThemeButton = this.showThemeButton.bind(this)
     this.hideThemeButton = this.hideThemeButton.bind(this)
     this.handleThemeChange = this.handleThemeChange.bind(this)
+    this.handleSpoilerModeChange = this.handleSpoilerModeChange.bind(this)
   }
 
   handleThemeChange() {
     this.setState((state) => ({
       theme: state.theme === 'light' ? 'dark' : 'light',
     }))
+  }
+
+  handleSpoilerModeChange(e) {
+    this.setState({
+      spoilerMode: e.target.value
+    })
   }
 
   showThemeButton() {
@@ -199,6 +208,7 @@ export default class PreviewPage extends React.Component {
       }
       // katex
       this.md
+        .use(markdownItAlphaList)
         .use(mk, {
           ...DEFAULT_OPTIONS.katex,
           ...katex
@@ -323,6 +333,7 @@ export default class PreviewPage extends React.Component {
       name,
       pageTitle,
       themeModeIsVisible,
+      spoilerMode,
       contentEditable,
       disableFilename,
     } = this.state
@@ -350,7 +361,7 @@ export default class PreviewPage extends React.Component {
           <script type="text/javascript" src="/_static/viz.js"></script>
           <script type="text/javascript" src="/_static/full.render.js"></script>
         </Head>
-        <main data-theme={this.state.theme}>
+        <main data-theme={this.state.theme} data-spoiler-mode={this.state.spoilerMode}>
           <div id="page-ctn" contentEditable={contentEditable ? 'true' : 'false'}>
             { disableFilename == 0 &&
               <header
@@ -385,6 +396,18 @@ export default class PreviewPage extends React.Component {
                     <span>Dark Mode</span>
                   </label>
                )}
+               <label id="toggle-spoiler" htmlFor="spoiler">
+                  <select
+                    id="spoiler"
+                    value={spoilerMode}
+                    onChange={this.handleSpoilerModeChange}
+                    style={{ background: 'transparent', border: '1px solid currentColor', borderRadius: '3px', color: 'inherit', marginLeft: '8px', cursor: 'pointer', outline: 'none', padding: '2px 4px' }}
+                  >
+                    <option value="hint" style={{ color: 'black' }}>Spoiler: Hint</option>
+                    <option value="full" style={{ color: 'black' }}>Spoiler: Full</option>
+                    <option value="off" style={{ color: 'black' }}>Spoiler: Off</option>
+                  </select>
+               </label>
               </header>
             }
             <section
