@@ -25,6 +25,7 @@ import { meta } from './meta';
 import markdownItAlphaList from "./markdown-it-alpha-list"
 import markdownImSize from './markdown-it-imsize'
 import { escape} from './utils';
+import markdownItTableSpoiler from './markdown-it-table-spoiler';
 
 const anchorSymbol = '<svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg>'
 
@@ -92,12 +93,35 @@ export default class PreviewPage extends React.Component {
       themeModeIsVisible: false,
       spoilerMode: 'hint',
       contentEditable: false,
-      disableFilename: 1
+      disableFilename: 1,
+      checkedColumns: new Set()
     }
     this.showThemeButton = this.showThemeButton.bind(this)
     this.hideThemeButton = this.hideThemeButton.bind(this)
     this.handleThemeChange = this.handleThemeChange.bind(this)
     this.handleSpoilerModeChange = this.handleSpoilerModeChange.bind(this)
+    this.handleCheckboxChange = this.handleCheckboxChange.bind(this)
+  }
+
+  handleCheckboxChange(e) {
+    if (e.target && e.target.classList.contains('col-spoiler-checkbox')) {
+      const id = e.target.getAttribute('data-id');
+      const newChecked = new Set(this.state.checkedColumns);
+      if (e.target.checked) {
+        newChecked.add(id);
+      } else {
+        newChecked.delete(id);
+      }
+      this.setState({ checkedColumns: newChecked }, () => {
+        const newContent = this.md.render(this.preContent, { checkedColumns: newChecked });
+        this.setState({ content: newContent }, () => {
+          chart.render();
+          renderDiagram();
+          renderFlowchart();
+          renderDot();
+        });
+      });
+    }
   }
 
   handleThemeChange() {
@@ -158,6 +182,15 @@ export default class PreviewPage extends React.Component {
 
   componentDidMount() {
     this.startSocket(parseFloat(window.location.pathname.split('/')[2]))
+    if (typeof document !== 'undefined') {
+      document.addEventListener('change', this.handleCheckboxChange)
+    }
+  }
+
+  componentWillUnmount() {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('change', this.handleCheckboxChange)
+    }
   }
 
   onConnect() {
@@ -224,6 +257,7 @@ export default class PreviewPage extends React.Component {
         .use(emoji)
         .use(taskLists)
         .use(markdownDeflist)
+        .use(markdownItTableSpoiler)
         .use(footnote)
         .use(image)
         .use(markdownImSize)
@@ -285,7 +319,7 @@ export default class PreviewPage extends React.Component {
         })(name),
         ...(
           refreshContent
-          ? { content: this.md.render(newContent) }
+          ? { content: this.md.render(newContent, { checkedColumns: this.state.checkedColumns }) }
           : {}
         ),
         pageTitle,
