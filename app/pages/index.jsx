@@ -378,6 +378,7 @@ export default class PreviewPage extends React.Component {
     return (
       <React.Fragment>
         <Head>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>{(pageTitle || '').replace(/\$\{name\}/, name)}</title>
           <link rel="shortcut icon" type="image/ico" href="/_static/favicon.ico" />
           <link rel="stylesheet" href="/_static/page.css" />
