@@ -91,26 +91,72 @@ use(async (req, res, next) => {
         }  
       }
 
-      let imgPath = decodeURIComponent(decodeURIComponent(req.asPath.replace(reg, '')))
-      imgPath = imgPath.replace(/\\ /g, ' ')
-      if (imgPath[0] !== '/' && imgPath[0] !== '\\') {
-        imgPath = path.join(fileDir, imgPath)
-      } else if (!fs.existsSync(imgPath)) {
-        let tmpDirPath = fileDir
-        while (tmpDirPath !== '/' && tmpDirPath !== '\\') {
-          tmpDirPath = path.normalize(path.join(tmpDirPath, '..'))
-          let tmpImgPath = path.join(tmpDirPath, imgPath)
-          if (fs.existsSync(tmpImgPath)) {
-            imgPath = tmpImgPath
-            break
+      const decodedPath = decodeURIComponent(decodeURIComponent(req.asPath.replace(reg, ''))).replace(/\\ /g, ' ')
+      let imgPath
+      if (decodedPath[0] !== '/' && decodedPath[0] !== '\\') {
+        // relative reference: try the buffer dir first, then walk up ancestor
+        // directories (notes often reference a shared assets folder above)
+        imgPath = path.join(fileDir, decodedPath)
+        if (!fs.existsSync(imgPath)) {
+          let tmpDirPath = fileDir
+          while (tmpDirPath !== '/' && tmpDirPath !== '\\') {
+            tmpDirPath = path.normalize(path.join(tmpDirPath, '..'))
+            const tmpImgPath = path.join(tmpDirPath, decodedPath)
+            if (fs.existsSync(tmpImgPath)) {
+              imgPath = tmpImgPath
+              break
+            }
+          }
+        }
+      } else {
+        imgPath = decodedPath
+        if (!fs.existsSync(imgPath)) {
+          // absolute reference not found: try it relative to buffer dir ancestors
+          const relPath = decodedPath.replace(/^[/\\\\]+/, '')
+          let tmpDirPath = fileDir
+          while (tmpDirPath !== '/' && tmpDirPath !== '\\') {
+            tmpDirPath = path.normalize(path.join(tmpDirPath, '..'))
+            const tmpImgPath = path.join(tmpDirPath, relPath)
+            if (fs.existsSync(tmpImgPath)) {
+              imgPath = tmpImgPath
+              break
+            }
           }
         }
       }
       logger.info('imgPath', imgPath);
       
       if (fs.existsSync(imgPath) && !fs.statSync(imgPath).isDirectory()) {
-        if (imgPath.endsWith('svg')) {
-          res.setHeader('content-type', 'image/svg+xml')
+        const ext = path.extname(imgPath).toLowerCase()
+        const mime = {
+          '.svg': 'image/svg+xml',
+          '.png': 'image/png',
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+          '.bmp': 'image/bmp',
+          '.ico': 'image/x-icon',
+          '.avif': 'image/avif',
+          '.mp3': 'audio/mpeg',
+          '.wav': 'audio/wav',
+          '.ogg': 'audio/ogg',
+          '.oga': 'audio/ogg',
+          '.m4a': 'audio/mp4',
+          '.flac': 'audio/flac',
+          '.aac': 'audio/aac',
+          '.opus': 'audio/opus',
+          '.wma': 'audio/x-ms-wma',
+          '.weba': 'audio/webm',
+          '.mp4': 'video/mp4',
+          '.webm': 'video/webm',
+          '.mkv': 'video/x-matroska',
+          '.mov': 'video/quicktime',
+          '.ogv': 'video/ogg',
+          '.avi': 'video/x-msvideo'
+        }[ext]
+        if (mime) {
+          res.setHeader('content-type', mime)
         }
         return fs.createReadStream(imgPath).pipe(res)
       }

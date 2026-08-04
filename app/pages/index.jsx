@@ -15,6 +15,7 @@ import chart from './chart'
 import mkitMermaid from './mermaid'
 import linenumbers from './linenumbers'
 import image from './image'
+import renderAudioPlayers from './audio'
 import diagram, { renderDiagram } from './diagram'
 import flowchart, { renderFlowchart } from './flowchart'
 import dot, { renderDot } from './dot'
@@ -119,6 +120,7 @@ export default class PreviewPage extends React.Component {
           renderDiagram();
           renderFlowchart();
           renderDot();
+          renderAudioPlayers();
         });
       });
     }
@@ -339,6 +341,7 @@ export default class PreviewPage extends React.Component {
           renderDiagram()
           renderFlowchart()
           renderDot()
+          renderAudioPlayers()
         }
         refreshScroll()
       })
