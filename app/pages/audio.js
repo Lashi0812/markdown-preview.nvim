@@ -25,7 +25,7 @@ function formatTime (s) {
 const STYLE_ID = 'mkdp-audio-style'
 
 const CSS = `
-.mkdp-audio{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 10px;margin:10px 0;max-width:440px;border:1px solid rgba(127,127,127,.28);border-radius:9px;background:rgba(127,127,127,.07);color:inherit;font-size:12px;line-height:1;box-sizing:border-box}
+.mkdp-audio{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px 10px;margin:10px 0;max-width:480px;border:1px solid rgba(127,127,127,.28);border-radius:9px;background:rgba(127,127,127,.07);color:inherit;font-size:12px;line-height:1;box-sizing:border-box}
 .mkdp-audio audio{display:none}
 .mkdp-audio-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:none;border-radius:7px;background:transparent;color:inherit;cursor:pointer;flex:none;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 .mkdp-audio-btn:hover{background:rgba(127,127,127,.16)}
@@ -33,9 +33,10 @@ const CSS = `
 .mkdp-audio-btn svg{width:14px;height:14px;fill:currentColor;display:block}
 .mkdp-audio-play{width:30px;height:30px;border-radius:50%;background:rgba(127,127,127,.14)}
 .mkdp-audio-play:hover{background:rgba(127,127,127,.24)}
-.mkdp-audio-speed{width:auto;min-width:38px;padding:0 7px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.mkdp-audio-speed{width:auto;min-width:38px;padding:0 7px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;margin-left:auto}
 .mkdp-audio-jump{width:auto;min-width:32px;padding:0 5px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
-.mkdp-audio-seek{flex:1 1 auto;min-width:0;height:5px;margin:0 4px;padding:0;-webkit-appearance:none;appearance:none;border:none;border-radius:3px;background:rgba(127,127,127,.3);cursor:pointer;outline-offset:4px}
+.mkdp-audio-bar{order:10;flex:1 1 100%;display:flex;align-items:center;gap:8px;min-width:0}
+.mkdp-audio-seek{flex:1 1 auto;min-width:0;height:5px;margin:0;padding:0;-webkit-appearance:none;appearance:none;border:none;border-radius:3px;background:rgba(127,127,127,.3);cursor:pointer;outline-offset:4px}
 .mkdp-audio-seek::-webkit-slider-runnable-track{background:transparent;height:5px;border-radius:3px}
 .mkdp-audio-seek::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;margin-top:-4px;border:none;border-radius:50%;background:currentColor;box-shadow:0 0 0 2px rgba(0,0,0,.12)}
 .mkdp-audio-seek::-moz-range-track{background:transparent;height:5px;border-radius:3px}
@@ -47,7 +48,8 @@ const CSS = `
 .mkdp-audio-play{width:36px;height:36px}
 .mkdp-audio-speed{min-width:42px;padding:0 8px;font-size:12px}
 .mkdp-audio-jump{min-width:36px;font-size:12px}
-.mkdp-audio-seek{order:10;flex:1 1 100%;height:6px;margin:3px 0 0}
+.mkdp-audio-bar{gap:6px}
+.mkdp-audio-seek{height:6px}
 .mkdp-audio-time{font-size:11px;min-width:80px}
 .mkdp-audio-seek::-webkit-slider-runnable-track{height:6px}
 .mkdp-audio-seek::-webkit-slider-thumb{width:16px;height:16px;margin-top:-5px}
@@ -79,10 +81,12 @@ function upgrade (audioEl) {
     <button type="button" class="mkdp-audio-btn mkdp-audio-jump mkdp-audio-back10" title="Back 10 seconds" aria-label="Back 10 seconds">-10</button>
     <button type="button" class="mkdp-audio-btn mkdp-audio-play" aria-label="Play">${ICON_PLAY}</button>
     <button type="button" class="mkdp-audio-btn mkdp-audio-jump mkdp-audio-fwd10" title="Forward 10 seconds" aria-label="Forward 10 seconds">+10</button>
-    <input type="range" class="mkdp-audio-seek" min="0" max="0" step="0.1" value="0" aria-label="Seek">
-    <span class="mkdp-audio-time">0:00 / 0:00</span>
     <button type="button" class="mkdp-audio-btn mkdp-audio-speed" title="Playback speed" aria-label="Playback speed">1×</button>
     <button type="button" class="mkdp-audio-btn mkdp-audio-mute" aria-label="Mute">${ICON_VOLUME}</button>
+    <div class="mkdp-audio-bar">
+      <input type="range" class="mkdp-audio-seek" min="0" max="0" step="0.1" value="0" aria-label="Seek">
+      <span class="mkdp-audio-time">0:00 / 0:00</span>
+    </div>
   `
 
   audioEl.parentNode.insertBefore(wrap, audioEl)
