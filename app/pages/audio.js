@@ -81,11 +81,11 @@ function upgrade (audioEl) {
     <button type="button" class="mkdp-audio-btn mkdp-audio-jump mkdp-audio-back10" title="Back 10 seconds" aria-label="Back 10 seconds">-10</button>
     <button type="button" class="mkdp-audio-btn mkdp-audio-play" aria-label="Play">${ICON_PLAY}</button>
     <button type="button" class="mkdp-audio-btn mkdp-audio-jump mkdp-audio-fwd10" title="Forward 10 seconds" aria-label="Forward 10 seconds">+10</button>
+    <span class="mkdp-audio-time">0:00 / 0:00</span>
     <button type="button" class="mkdp-audio-btn mkdp-audio-speed" title="Playback speed" aria-label="Playback speed">1×</button>
     <button type="button" class="mkdp-audio-btn mkdp-audio-mute" aria-label="Mute">${ICON_VOLUME}</button>
     <div class="mkdp-audio-bar">
       <input type="range" class="mkdp-audio-seek" min="0" max="0" step="0.1" value="0" aria-label="Seek">
-      <span class="mkdp-audio-time">0:00 / 0:00</span>
     </div>
   `
 
