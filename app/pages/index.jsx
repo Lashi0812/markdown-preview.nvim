@@ -102,6 +102,8 @@ export default class PreviewPage extends React.Component {
     this.handleThemeChange = this.handleThemeChange.bind(this)
     this.handleSpoilerModeChange = this.handleSpoilerModeChange.bind(this)
     this.handleCheckboxChange = this.handleCheckboxChange.bind(this)
+    this.handleKeyDown = this.handleKeyDown.bind(this)
+    this.cycleSpoilerMode = this.cycleSpoilerMode.bind(this)
   }
 
   handleCheckboxChange(e) {
@@ -136,6 +138,24 @@ export default class PreviewPage extends React.Component {
     this.setState({
       spoilerMode: e.target.value
     })
+  }
+
+  cycleSpoilerMode() {
+    const order = ['hint', 'full', 'off']
+    this.setState((state) => ({
+      spoilerMode: order[(order.indexOf(state.spoilerMode) + 1) % order.length]
+    }))
+  }
+
+  handleKeyDown(e) {
+    // Ignore when focus is in an editable element
+    if (e.target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
+      return
+    }
+    if (e.key === 's' || e.key === 'S') {
+      e.preventDefault()
+      this.cycleSpoilerMode()
+    }
   }
 
   showThemeButton() {
@@ -186,12 +206,14 @@ export default class PreviewPage extends React.Component {
     this.startSocket(parseFloat(window.location.pathname.split('/')[2]))
     if (typeof document !== 'undefined') {
       document.addEventListener('change', this.handleCheckboxChange)
+      document.addEventListener('keydown', this.handleKeyDown)
     }
   }
 
   componentWillUnmount() {
     if (typeof document !== 'undefined') {
       document.removeEventListener('change', this.handleCheckboxChange)
+      document.removeEventListener('keydown', this.handleKeyDown)
     }
   }
 
