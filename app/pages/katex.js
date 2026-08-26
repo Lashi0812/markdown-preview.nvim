@@ -26,8 +26,7 @@ function isValidDelim (state, pos) {
 
   // Check non-whitespace conditions for opening and closing, and
   // check that closing delimeter isn't followed by a number
-  if (prevChar === 0x20/* " " */ || prevChar === 0x09/* \t */ ||
-            (nextChar >= 0x30/* "0" */ && nextChar <= 0x39/* "9" */)) {
+  if (nextChar >= 0x30/* "0" */ && nextChar <= 0x39/* "9" */) {
     can_close = false
   }
   if (nextChar === 0x20/* " " */ || nextChar === 0x09/* \t */) {

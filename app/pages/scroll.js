@@ -16,6 +16,15 @@ function getAttrTag (line) {
   return `[data-source-line="${line}"]`
 }
 
+function getAbsOffsetTop (ele) {
+  // Use getBoundingClientRect + current scroll for an accurate,
+  // up-to-the-millisecond position. offsetTop can be stale if the
+  // layout hasn't settled after a re-render (e.g. spoiler mode
+  // change, KaTeX render), causing sync-scroll to jump.
+  const rect = ele.getBoundingClientRect()
+  return rect.top + window.pageYOffset
+}
+
 function getPreLineOffsetTop (line) {
   let currentLine = line - 1
   let ele = null
@@ -27,7 +36,7 @@ function getPreLineOffsetTop (line) {
   }
   return [
     currentLine >= 0 ? currentLine : 0,
-    ele ? ele.offsetTop : 0
+    ele ? getAbsOffsetTop(ele) : 0
   ]
 }
 
@@ -42,7 +51,7 @@ function getNextLineOffsetTop (line, len) {
   }
   return [
     currentLine < len ? currentLine : len - 1,
-    ele ? ele.offsetTop : document.documentElement.scrollHeight
+    ele ? getAbsOffsetTop(ele) : document.documentElement.scrollHeight
   ]
 }
 
@@ -58,7 +67,7 @@ function relativeScroll (line, ratio, len) {
   let offsetTop = 0
   const lineEle = document.querySelector(`[data-source-line="${line}"]`)
   if (lineEle) {
-    offsetTop = lineEle.offsetTop
+    offsetTop = getAbsOffsetTop(lineEle)
   } else {
     const pre = getPreLineOffsetTop(line)
     const next = getNextLineOffsetTop(line, len)
