@@ -184,10 +184,16 @@ function onPress(btn, fn, repeat = true) {
 function setup(div, svg, index) {
   div.dataset.zoomReady = 'true'
 
-  // Wrap mermaid's svg children so we can transform without touching its attributes
-  const g = document.createElementNS(SVG_NS, 'g')
-  while (svg.firstChild) g.appendChild(svg.firstChild)
-  svg.appendChild(g)
+  // Wrap mermaid's svg children so we can transform without touching its attributes.
+  // Idempotent: if a <g> wrapper from a previous (stale) setup pass is already there,
+  // reuse it instead of double-wrapping.
+  let g = svg.querySelector(':scope > g.mmd-pan')
+  if (!g) {
+    g = document.createElementNS(SVG_NS, 'g')
+    g.classList.add('mmd-pan')
+    while (svg.firstChild) g.appendChild(svg.firstChild)
+    svg.appendChild(g)
+  }
 
   const saved = views.get(index)
   let scale = saved ? saved.scale : 1
@@ -418,7 +424,10 @@ function attachMermaidZoom() {
   const divs = document.querySelectorAll('.mermaid')
 
   divs.forEach((div, index) => {
-    if (div.dataset.zoomReady === 'true') return
+    // Guard on actual controls, not just the flag: a stale cached chunk from an
+    // older build may have set zoomReady=true without ever adding controls, which
+    // would otherwise make every diagram look "done" and skip setup forever.
+    if (div.dataset.zoomReady === 'true' && div.querySelector('.mmd-ctl')) return
     const svg = div.querySelector('svg')
     if (!svg) {
       // Mermaid renders asynchronously: wait for the <svg> to land, then retry.
