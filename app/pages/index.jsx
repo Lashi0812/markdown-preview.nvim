@@ -119,6 +119,7 @@ export default class PreviewPage extends React.Component {
       this.setState({ checkedColumns: newChecked }, () => {
         const newContent = this.md.render(this.preContent, { checkedColumns: newChecked });
         this.setState({ content: newContent }, () => {
+          this.renderMermaid();
           chart.render();
           renderDiagram();
           renderFlowchart();
@@ -133,6 +134,16 @@ export default class PreviewPage extends React.Component {
     this.setState((state) => ({
       theme: state.theme === 'light' ? 'dark' : 'light',
     }))
+  }
+
+  renderMermaid() {
+    try {
+      // eslint-disable-next-line
+      mermaid.initialize({ theme: (this.state.theme || 'light'), ...(this.mermaidOpts || {}) })
+      // eslint-disable-next-line
+      mermaid.init(undefined, document.querySelectorAll('.mermaid'))
+    } catch (e) { console.warn('mermaid:', e) }
+    attachMermaidZoom() // runs even if mermaid threw; waits for async svg
   }
 
   handleSpoilerModeChange(e) {
@@ -246,6 +257,7 @@ export default class PreviewPage extends React.Component {
     name = '',
     content
   }) {
+    this.mermaidOpts = options.maid || {}
     if (!this.md) {
       const {
         mkit = {},
@@ -353,13 +365,7 @@ export default class PreviewPage extends React.Component {
         disableFilename: options.disable_filename
       }, () => {
         if (refreshContent) {
-          try {
-            // eslint-disable-next-line
-            mermaid.initialize({ theme: (this.state.theme || 'light'), ...(options.maid || {}) })
-            // eslint-disable-next-line
-            mermaid.init(undefined, document.querySelectorAll('.mermaid'))
-            attachMermaidZoom()
-          } catch (e) { }
+          this.renderMermaid()
 
           chart.render()
           renderDiagram()
