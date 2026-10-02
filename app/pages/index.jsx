@@ -13,6 +13,7 @@ import markdownDeflist from 'markdown-it-deflist'
 import mk from './katex'
 import chart from './chart'
 import mkitMermaid from './mermaid'
+import attachMermaidZoom from './mermaid-zoom'
 import linenumbers from './linenumbers'
 import image from './image'
 import renderAudioPlayers from './audio'
@@ -357,6 +358,7 @@ export default class PreviewPage extends React.Component {
             mermaid.initialize({ theme: (this.state.theme || 'light'), ...(options.maid || {}) })
             // eslint-disable-next-line
             mermaid.init(undefined, document.querySelectorAll('.mermaid'))
+            attachMermaidZoom()
           } catch (e) { }
 
           chart.render()
