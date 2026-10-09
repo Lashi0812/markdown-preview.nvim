@@ -324,6 +324,22 @@ function setup(div, svg, index) {
     ty = cy * (1 - s);
   };
 
+  // Size the box to the diagram (natural size, capped to 85% of the window)
+  let lastW = 0;
+  const sizeBox = () => {
+    if (div.classList.contains('mmd-fullscreen')) return;
+    const w = div.clientWidth;
+    if (!w || w === lastW) return;
+    lastW = w;
+    const vb = svg.viewBox && svg.viewBox.baseVal;
+    if (!vb || !vb.width) return;
+    const natural = vb.height * Math.min(1, w / vb.width);
+    const h = Math.round(
+      Math.min(Math.max(natural + 32, 160), window.innerHeight * 0.85)
+    );
+    div.style.height = `${h}px`;
+  };
+
   const reset = () => {
     touched = false;
     fit();
@@ -482,6 +498,7 @@ function setup(div, svg, index) {
   let ro = null;
   if (typeof ResizeObserver !== 'undefined') {
     ro = new ResizeObserver(() => {
+      sizeBox();
       if (!touched) fit();
       apply();
     });
@@ -508,6 +525,7 @@ function setup(div, svg, index) {
   svgOf.set(div, svg);
 
   // ---------- initial state ----------
+  sizeBox();
   if (!saved || !saved.touched) fit();
   apply();
   if (fsIndex === index) enter();

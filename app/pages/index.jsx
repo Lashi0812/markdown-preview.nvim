@@ -139,34 +139,87 @@ export default class PreviewPage extends React.Component {
   renderMermaid() {
     // eslint-disable-next-line
     const mermaidOpts = this.mermaidOpts || {}
-    // Wait for the real font before measuring, otherwise mermaid sizes the
-    // boxes with a fallback font and labels get clipped.
-    const doInit = () => {
+    const token = (this._mmdToken = (this._mmdToken || 0) + 1)
+    const isDark = this.state.theme === 'dark'
+    const FONT = '"JetBrains Mono", "SF Mono", Menlo, Consolas, monospace'
+
+    const run = async () => {
+      // a newer refresh started while we were waiting for fonts
+      if (token !== this._mmdToken) return
+
       try {
         mermaid.initialize({
           startOnLoad: false,
-          theme: (this.state.theme || 'light'),
-          fontFamily: '"JetBrains Mono", monospace',
+          theme: isDark ? 'base' : 'default',
+          fontFamily: FONT,
+          themeVariables: isDark
+            ? {
+                fontFamily: FONT,
+                fontSize: '16px',
+                background: '#1e1e1e',
+                primaryColor: '#161b22',
+                primaryBorderColor: '#58a6ff',
+                primaryTextColor: '#e6edf3',
+                secondaryColor: '#21262d',
+                tertiaryColor: '#21262d',
+                lineColor: '#8b949e',
+                textColor: '#e6edf3',
+                clusterBkg: '#21262d',
+                clusterBorder: '#30363d',
+                edgeLabelBackground: '#1e1e1e',
+              }
+            : { fontFamily: FONT, fontSize: '16px' },
           flowchart: {
             htmlLabels: true,
-            wrappingWidth: 180,   // narrower = more line breaks in nodes
+            wrappingWidth: 300,        // wider = fewer line breaks inside nodes
             padding: 14,
             nodeSpacing: 40,
             rankSpacing: 50,
+            subGraphTitleMargin: { top: 10, bottom: 10 },
           },
           ...mermaidOpts,
         })
-        mermaid.init(undefined, document.querySelectorAll('.mermaid'))
-      } catch (e) { console.warn('mermaid:', e) }
-      attachMermaidZoom() // runs even if mermaid threw; waits for async svg
+      } catch (e) {
+        console.warn('mermaid init:', e)
+      }
+
+      const nodes = Array.from(
+        document.querySelectorAll('.mermaid:not([data-rendered])')
+      )
+
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i]
+        el.setAttribute('data-rendered', '1')   // prevents double rendering
+        const code = el.textContent
+        const id = `mmd-${Date.now()}-${i}`
+        try {
+          // No container argument: mermaid measures in a temp element on <body>,
+          // outside .markdown-body, so inherited word-break rules can't affect sizes.
+          const out = await mermaid.render(id, code)
+          const svg = typeof out === 'string' ? out : out.svg
+          if (!el.isConnected) continue        // React replaced it meanwhile
+          el.innerHTML = svg
+        } catch (e) {
+          console.warn('mermaid render:', e)
+          const tmp = document.getElementById('d' + id)
+          if (tmp) tmp.remove()                // mermaid leaves an error node behind
+          if (el.isConnected) {
+            el.style.height = 'auto'
+            el.innerHTML = '<pre style="margin:0;padding:12px;color:#f85149;white-space:pre-wrap"></pre>'
+            el.firstChild.textContent = String((e && (e.str || e.message)) || e)
+          }
+        }
+      }
+
+      attachMermaidZoom()
     }
-    if (document.fonts && document.fonts.ready) {
-      Promise.resolve(document.fonts.load('14px "JetBrains Mono"'))
+
+    if (document.fonts && document.fonts.load) {
+      Promise.resolve(document.fonts.load('16px "JetBrains Mono"'))
         .then(() => document.fonts.ready)
-        .then(doInit)
-        .catch(doInit)
+        .then(run, run)
     } else {
-      doInit()
+      run()
     }
   }
 
