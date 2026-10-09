@@ -25,7 +25,7 @@ const MermaidPlugin = (md) => {
     if (firstLine === 'gantt' ||
       firstLine === 'sequenceDiagram' ||
       firstLine === 'erDiagram' ||
-      firstLine.match(/^graph (?:TB|BT|RL|LR|TD);?$/)) {
+      /^graph\s+(?:TB|BT|RL|LR|TD)\b/i.test(firstLine)) {
       return mermaidChart(code)
     }
     return origin(tokens, idx, options, env, slf)

@@ -108,15 +108,29 @@ const STYLES = `
 }
 `;
 
-// index -> { scale, tx, ty, touched }; survives live re-renders
+// key -> { scale, tx, ty, touched }; survives live re-renders.
+// Keyed by a stable data attribute so inserting/removing diagrams above
+// an existing one does not shift its saved zoom state.
 const views = new Map();
 const teardowns = new WeakMap(); // div -> () => void  (cleanup of a previous setup)
 const svgOf = new WeakMap(); // div -> the <svg> the current setup was built for
-let fsIndex = null; // index of the diagram that is fullscreen (re-entered after re-render)
+let keyCounter = 0;
+
+// The diagram that is currently fullscreen, tracked by node reference so a
+// re-render (which replaces the div) can be detected and cleaned up.
 let activeFs = null; // { div, exit, zoomCenter, reset, panByPx, step }
 let keysBound = false;
 let observerBound = false;
 let scheduled = false;
+
+function keyOf(div) {
+  let k = div.dataset.mmdKey;
+  if (!k) {
+    k = `mmd-${++keyCounter}`;
+    div.dataset.mmdKey = k;
+  }
+  return k;
+}
 
 function ensureStyles() {
   if (document.getElementById('mmd-zoom-styles')) return;
@@ -131,6 +145,13 @@ function bindGlobalKeys() {
   keysBound = true;
   document.addEventListener('keydown', (e) => {
     if (!activeFs) return;
+    // Esc always closes fullscreen, regardless of focus. Handle before the
+    // editable-target guard so a focused preview body can't swallow it.
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      activeFs.exit();
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (
       e.target.isContentEditable ||
@@ -139,9 +160,6 @@ function bindGlobalKeys() {
       return;
     const s = activeFs.step();
     switch (e.key) {
-      case 'Escape':
-        activeFs.exit();
-        break;
       case '+':
       case '=':
         activeFs.zoomCenter(ZOOM_STEP);
@@ -205,13 +223,16 @@ function mkBtn(label, title) {
   return b;
 }
 
-// click + hold-to-repeat, keyboard (Enter/Space) friendly
+// click + hold-to-repeat, keyboard (Enter/Space) friendly.
+// Returns a cleanup fn so pending timers are cleared on teardown.
 function onPress(btn, fn, repeat = true) {
   let delay = null;
   let timer = null;
   const stop = () => {
     clearTimeout(delay);
     clearInterval(timer);
+    delay = null;
+    timer = null;
   };
   btn.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -231,6 +252,7 @@ function onPress(btn, fn, repeat = true) {
       fn();
     }
   });
+  return stop;
 }
 
 function setup(div, svg, index) {
@@ -242,6 +264,7 @@ function setup(div, svg, index) {
 
   const ac = new AbortController();
   const opts = { signal: ac.signal };
+  const stopTimers = [];
 
   // Wrap mermaid's svg children so we can transform without touching its attributes.
   let g = svg.querySelector(':scope > g.mmd-pan');
@@ -252,7 +275,8 @@ function setup(div, svg, index) {
     svg.appendChild(g);
   }
 
-  const saved = views.get(index);
+  const key = keyOf(div);
+  const saved = views.get(key);
   let scale = saved ? saved.scale : 1;
   let tx = saved ? saved.tx : 0;
   let ty = saved ? saved.ty : 0;
@@ -310,7 +334,7 @@ function setup(div, svg, index) {
   const apply = () => {
     g.setAttribute('transform', `translate(${tx} ${ty}) scale(${scale})`);
     pct.textContent = `${Math.round(scale * pxPerUnit() * 100)}%`;
-    views.set(index, { scale, tx, ty, touched });
+    views.set(key, { scale, tx, ty, touched });
   };
 
   const fit = () => {
@@ -325,7 +349,8 @@ function setup(div, svg, index) {
     ty = cy * (1 - s);
   };
 
-  // Size the box to the diagram (natural size, capped to 85% of the window)
+  // Size the box to the diagram (natural size, capped to 85% of the window).
+  // Forces a synchronous layout so the CTM read by a following fit() is accurate.
   let lastW = 0;
   const sizeBox = () => {
     if (div.classList.contains('mmd-fullscreen')) return;
@@ -339,7 +364,7 @@ function setup(div, svg, index) {
       Math.min(Math.max(natural + 32, 160), window.innerHeight * 0.85)
     );
     div.style.height = `${h}px`;
-    // Force a synchronous layout so a subsequent getScreenCTM() is accurate.
+    // Flush layout so a synchronous getScreenCTM() sees the new size.
     void div.offsetHeight;
   };
 
@@ -384,7 +409,6 @@ function setup(div, svg, index) {
     document.documentElement.style.overflow = 'hidden';
     btnFull.textContent = '✕';
     btnFull.title = 'Close fullscreen (Esc)';
-    fsIndex = index;
     activeFs = { div, exit, zoomCenter, reset, panByPx, step };
     // fresh fit so the diagram fills the screen (upscale allowed in fs)
     if (!touched) fit();
@@ -397,8 +421,7 @@ function setup(div, svg, index) {
     document.documentElement.style.overflow = '';
     btnFull.textContent = '⤢';
     btnFull.title = 'Fullscreen';
-    fsIndex = null;
-    activeFs = null;
+    if (activeFs && activeFs.div === div) activeFs = null;
     // back to natural size: refit at 100% and restore the box height
     fit();
     apply();
@@ -409,21 +432,26 @@ function setup(div, svg, index) {
     div.classList.contains('mmd-fullscreen') ? exit() : enter();
 
   // ---------- wire up buttons ----------
-  onPress(btnIn, () => zoomCenter(ZOOM_STEP));
-  onPress(btnOut, () => zoomCenter(1 / ZOOM_STEP));
-  onPress(btnUp, () => panByPx(0, step()));
-  onPress(btnDown, () => panByPx(0, -step()));
-  onPress(btnLeft, () => panByPx(step(), 0));
-  onPress(btnRight, () => panByPx(-step(), 0));
-  onPress(btnReset, reset, false);
-  onPress(btnFull, toggleFullscreen, false);
+  stopTimers.push(onPress(btnIn, () => zoomCenter(ZOOM_STEP)));
+  stopTimers.push(onPress(btnOut, () => zoomCenter(1 / ZOOM_STEP)));
+  stopTimers.push(onPress(btnUp, () => panByPx(0, step())));
+  stopTimers.push(onPress(btnDown, () => panByPx(0, -step())));
+  stopTimers.push(onPress(btnLeft, () => panByPx(step(), 0)));
+  stopTimers.push(onPress(btnRight, () => panByPx(-step(), 0)));
+  stopTimers.push(onPress(btnReset, reset, false));
+  stopTimers.push(onPress(btnFull, toggleFullscreen, false));
 
   // ---------- wheel / pinch ----------
   div.addEventListener(
     'wheel',
     (e) => {
       const inFs = div.classList.contains('mmd-fullscreen');
-      if (WHEEL_NEEDS_MODIFIER && !inFs && !(e.ctrlKey || e.metaKey)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (WHEEL_NEEDS_MODIFIER && !inFs && !mod) return;
+      // Trackpad pinch on macOS reports ctrlKey on a plain wheel event with a
+      // usually-fractional, small deltaY. Only treat it as a zoom if the
+      // pointer is actually over this diagram, so it can't hijack scroll.
+      if (!inFs && mod && !div.matches(':hover')) return;
       e.preventDefault();
       const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
       zoomAt(e.clientX, e.clientY, Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)));
@@ -519,14 +547,15 @@ function setup(div, svg, index) {
   // ---------- teardown (used when this diagram is re-rendered / re-setup) ----------
   teardowns.set(div, () => {
     ac.abort();
+    stopTimers.forEach((f) => f());
     if (ro) ro.disconnect();
     div.classList.remove('mmd-dragging');
     if (div.classList.contains('mmd-fullscreen')) {
-      // keep fsIndex so the fresh setup re-enters fullscreen
       div.classList.remove('mmd-fullscreen');
       if (placeholder) placeholder.remove();
       placeholder = null;
-      activeFs = null;
+      if (activeFs && activeFs.div === div) activeFs = null;
+      document.documentElement.style.overflow = '';
     }
     ctlTop.remove();
     ctlBottom.remove();
@@ -536,21 +565,27 @@ function setup(div, svg, index) {
   svgOf.set(div, svg);
 
   // ---------- initial state ----------
+  // sizeBox() writes style.height; getScreenCTM() lags that by a layout pass,
+  // so fit() synchronously after it reads a stale ratio. Defer the first fit
+  // to rAF (post-layout) so a plain refresh doesn't produce a mis-scaled view.
   sizeBox();
-  // fit() reads getScreenCTM(), which lags a style.height write by a layout
-  // pass. Defer the first fit so the ResizeObserver / rAF sees the real CTM.
   if (!saved || !saved.touched) {
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => {
-        if (!touched) { fit(); apply(); }
+        // Bail if this diagram was re-rendered before the frame landed.
+        if (teardowns.get(div) && !touched) {
+          fit();
+          apply();
+        }
       });
     } else {
-      fit(); apply();
+      fit();
+      apply();
     }
   } else {
     apply();
   }
-  if (fsIndex === index) enter();
+  if (activeFs && activeFs.div === div) enter();
 }
 
 // A diagram is "healthy" if it was set up for its current <svg> and its controls are still there.
@@ -568,6 +603,14 @@ function attachMermaidZoom() {
   bindGlobalKeys();
   bindObserver();
 
+  // If the fullscreen diagram was replaced (re-render / block deleted), release
+  // the page-scroll lock and drop the stale reference. Without this the page
+  // stays unscrollable after an edit that removes or breaks the fs diagram.
+  if (activeFs && !activeFs.div.isConnected) {
+    document.documentElement.style.overflow = '';
+    activeFs = null;
+  }
+
   const divs = document.querySelectorAll('.mermaid');
 
   divs.forEach((div, index) => {
@@ -581,13 +624,6 @@ function attachMermaidZoom() {
       console.error('mermaid-zoom setup failed for diagram', index, e);
     }
   });
-
-  // Fullscreen diagram no longer exists (e.g. block deleted): release the scroll lock
-  if (fsIndex !== null && fsIndex >= divs.length) {
-    document.documentElement.style.overflow = '';
-    fsIndex = null;
-    activeFs = null;
-  }
 }
 
 export default attachMermaidZoom;
