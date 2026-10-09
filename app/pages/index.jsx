@@ -147,7 +147,13 @@ export default class PreviewPage extends React.Component {
           startOnLoad: false,
           theme: (this.state.theme || 'light'),
           fontFamily: '"JetBrains Mono", monospace',
-          flowchart: { htmlLabels: true, wrappingWidth: 220, padding: 12 },
+          flowchart: {
+            htmlLabels: true,
+            wrappingWidth: 260,   // wider = fewer line breaks in nodes
+            padding: 14,
+            nodeSpacing: 40,
+            rankSpacing: 50,
+          },
           ...mermaidOpts,
         })
         mermaid.init(undefined, document.querySelectorAll('.mermaid'))
@@ -155,7 +161,10 @@ export default class PreviewPage extends React.Component {
       attachMermaidZoom() // runs even if mermaid threw; waits for async svg
     }
     if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(doInit).catch(doInit)
+      Promise.resolve(document.fonts.load('14px "JetBrains Mono"'))
+        .then(() => document.fonts.ready)
+        .then(doInit)
+        .catch(doInit)
     } else {
       doInit()
     }
