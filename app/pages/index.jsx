@@ -81,22 +81,35 @@ const DEFAULT_OPTIONS = {
 // Insert <br/> into long quoted labels so wrapping is decided here,
 // not by the browser. MAX = characters per line.
 function wrapMermaidLabels(code, MAX = 24) {
-  return code.replace(/"([^"\n]*)"/g, (full, text) => {
-    if (text.length <= MAX || /<br\s*\/?>/i.test(text)) return full
-    const words = text.split(/\s+/)
-    const lines = []
-    let line = ''
-    for (const w of words) {
-      if (line && (line + ' ' + w).length > MAX) {
-        lines.push(line)
-        line = w
-      } else {
-        line = line ? line + ' ' + w : w
-      }
-    }
-    if (line) lines.push(line)
-    return '"' + lines.join('<br/>') + '"'
-  })
+  return code
+    .split('\n')
+    .map((ln) => {
+      // subgraph titles: never wrap (Mermaid reserves one line for them)
+      const isSubgraph = /^\s*subgraph\b/.test(ln)
+
+      return ln.replace(/"([^"\n]*)"/g, (full, text) => {
+        // Mermaid entity code for "&", avoids the double-escaped "&amp;"
+        let t = text.replace(/&amp;/g, '&').replace(/&/g, '#amp;')
+
+        if (isSubgraph || t.length <= MAX || /<br\s*\/?>/i.test(t)) {
+          return '"' + t + '"'
+        }
+        const words = t.split(/\s+/)
+        const lines = []
+        let line = ''
+        for (const w of words) {
+          if (line && (line + ' ' + w).length > MAX) {
+            lines.push(line)
+            line = w
+          } else {
+            line = line ? line + ' ' + w : w
+          }
+        }
+        if (line) lines.push(line)
+        return '"' + lines.join('<br/>') + '"'
+      })
+    })
+    .join('\n')
 }
 
 export default class PreviewPage extends React.Component {
@@ -197,6 +210,7 @@ export default class PreviewPage extends React.Component {
             nodeSpacing: 50,
             rankSpacing: 60,
             useMaxWidth: false,
+            subGraphTitleMargin: { top: 12, bottom: 20 },
           },
           ...mermaidOpts,
         })
