@@ -315,7 +315,8 @@ function setup(div, svg, index) {
 
   const fit = () => {
     const k = pxPerUnit();
-    const s = k > 1 ? 1 / k : 1;
+    // Inline: never upscale past 100%. Fullscreen: scale up to fill the screen.
+    const s = div.classList.contains('mmd-fullscreen') ? 1 / k : (k > 1 ? 1 / k : 1);
     const vb = svg.viewBox && svg.viewBox.baseVal;
     const cx = vb && vb.width ? vb.x + vb.width / 2 : 0;
     const cy = vb && vb.height ? vb.y + vb.height / 2 : 0;
@@ -383,6 +384,9 @@ function setup(div, svg, index) {
     btnFull.title = 'Close fullscreen (Esc)';
     fsIndex = index;
     activeFs = { div, exit, zoomCenter, reset, panByPx, step };
+    // fresh fit so the diagram fills the screen (upscale allowed in fs)
+    if (!touched) fit();
+    apply();
   };
   function exit() {
     div.classList.remove('mmd-fullscreen');
@@ -393,6 +397,11 @@ function setup(div, svg, index) {
     btnFull.title = 'Fullscreen';
     fsIndex = null;
     activeFs = null;
+    // back to natural size: refit at 100% and restore the box height
+    fit();
+    apply();
+    lastW = 0;
+    sizeBox();
   }
   const toggleFullscreen = () =>
     div.classList.contains('mmd-fullscreen') ? exit() : enter();
