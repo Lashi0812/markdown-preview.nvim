@@ -339,6 +339,8 @@ function setup(div, svg, index) {
       Math.min(Math.max(natural + 32, 160), window.innerHeight * 0.85)
     );
     div.style.height = `${h}px`;
+    // Force a synchronous layout so a subsequent getScreenCTM() is accurate.
+    void div.offsetHeight;
   };
 
   const reset = () => {
@@ -535,8 +537,19 @@ function setup(div, svg, index) {
 
   // ---------- initial state ----------
   sizeBox();
-  if (!saved || !saved.touched) fit();
-  apply();
+  // fit() reads getScreenCTM(), which lags a style.height write by a layout
+  // pass. Defer the first fit so the ResizeObserver / rAF sees the real CTM.
+  if (!saved || !saved.touched) {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (!touched) { fit(); apply(); }
+      });
+    } else {
+      fit(); apply();
+    }
+  } else {
+    apply();
+  }
   if (fsIndex === index) enter();
 }
 
