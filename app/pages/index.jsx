@@ -137,13 +137,28 @@ export default class PreviewPage extends React.Component {
   }
 
   renderMermaid() {
-    try {
-      // eslint-disable-next-line
-      mermaid.initialize({ theme: (this.state.theme || 'light'), ...(this.mermaidOpts || {}) })
-      // eslint-disable-next-line
-      mermaid.init(undefined, document.querySelectorAll('.mermaid'))
-    } catch (e) { console.warn('mermaid:', e) }
-    attachMermaidZoom() // runs even if mermaid threw; waits for async svg
+    // eslint-disable-next-line
+    const mermaidOpts = this.mermaidOpts || {}
+    // Wait for the real font before measuring, otherwise mermaid sizes the
+    // boxes with a fallback font and labels get clipped.
+    const doInit = () => {
+      try {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: (this.state.theme || 'light'),
+          fontFamily: '"JetBrains Mono", monospace',
+          flowchart: { htmlLabels: true, wrappingWidth: 220, padding: 12 },
+          ...mermaidOpts,
+        })
+        mermaid.init(undefined, document.querySelectorAll('.mermaid'))
+      } catch (e) { console.warn('mermaid:', e) }
+      attachMermaidZoom() // runs even if mermaid threw; waits for async svg
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(doInit).catch(doInit)
+    } else {
+      doInit()
+    }
   }
 
   handleSpoilerModeChange(e) {
