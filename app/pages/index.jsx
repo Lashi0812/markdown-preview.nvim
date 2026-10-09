@@ -78,6 +78,27 @@ const DEFAULT_OPTIONS = {
   }
 }
 
+// Insert <br/> into long quoted labels so wrapping is decided here,
+// not by the browser. MAX = characters per line.
+function wrapMermaidLabels(code, MAX = 24) {
+  return code.replace(/"([^"\n]*)"/g, (full, text) => {
+    if (text.length <= MAX || /<br\s*\/?>/i.test(text)) return full
+    const words = text.split(/\s+/)
+    const lines = []
+    let line = ''
+    for (const w of words) {
+      if (line && (line + ' ' + w).length > MAX) {
+        lines.push(line)
+        line = w
+      } else {
+        line = line ? line + ' ' + w : w
+      }
+    }
+    if (line) lines.push(line)
+    return '"' + lines.join('<br/>') + '"'
+  })
+}
+
 export default class PreviewPage extends React.Component {
   constructor(props) {
     super(props)
@@ -152,6 +173,7 @@ export default class PreviewPage extends React.Component {
           startOnLoad: false,
           theme: isDark ? 'base' : 'default',
           fontFamily: FONT,
+          htmlLabels: false,            // v11 reads it here
           themeVariables: isDark
             ? {
                 fontFamily: FONT,
@@ -170,12 +192,11 @@ export default class PreviewPage extends React.Component {
               }
             : { fontFamily: FONT, fontSize: '16px' },
           flowchart: {
-            htmlLabels: true,
-            wrappingWidth: 300,        // wider = fewer line breaks inside nodes
-            padding: 14,
-            nodeSpacing: 40,
-            rankSpacing: 50,
-            subGraphTitleMargin: { top: 10, bottom: 10 },
+            htmlLabels: false,          // v9/v10 read it here: plain SVG text
+            padding: 16,
+            nodeSpacing: 50,
+            rankSpacing: 60,
+            useMaxWidth: false,
           },
           ...mermaidOpts,
         })
@@ -190,7 +211,7 @@ export default class PreviewPage extends React.Component {
       for (let i = 0; i < nodes.length; i++) {
         const el = nodes[i]
         el.setAttribute('data-rendered', '1')   // prevents double rendering
-        const code = el.textContent
+        const code = wrapMermaidLabels(el.textContent)
         const id = `mmd-${Date.now()}-${i}`
         try {
           // No container argument: mermaid measures in a temp element on <body>,
