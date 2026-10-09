@@ -149,7 +149,7 @@ export default class PreviewPage extends React.Component {
           fontFamily: '"JetBrains Mono", monospace',
           flowchart: {
             htmlLabels: true,
-            wrappingWidth: 260,   // wider = fewer line breaks in nodes
+            wrappingWidth: 180,   // narrower = more line breaks in nodes
             padding: 14,
             nodeSpacing: 40,
             rankSpacing: 50,
