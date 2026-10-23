@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>markdown-preview.nvim — buffers</title>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --fg: #cdd6f4;
+    --muted: #7f849c;
+    --accent: #89b4fa;
+    --active: #a6e3a1;
+    --card: #262637;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eff1f5;
+      --fg: #4c4f69;
+      --muted: #8c8fa1;
+      --accent: #1e66f5;
+      --active: #40a02b;
+      --card: #ffffff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    padding: 2rem 1rem;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); font-size: .85rem; margin-bottom: 1.5rem; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: .6rem .9rem; font-size: .9rem; }
+  th { color: var(--muted); font-weight: 500; border-bottom: 1px solid rgba(128,128,128,.25); }
+  tr + tr td { border-top: 1px solid rgba(128,128,128,.12); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .path { color: var(--muted); font-size: .78rem; word-break: break-all; }
+  .badge {
+    display: inline-block; margin-left: .5rem; padding: .1rem .45rem;
+    border-radius: 999px; font-size: .7rem; color: var(--active);
+    border: 1px solid var(--active);
+  }
+  .badge.current { color: var(--accent); border-color: var(--accent); }
+  .badge.modified { color: #f9e2af; border-color: #f9e2af; }
+  .badge.visible { color: var(--muted); border-color: var(--muted); }
+  .empty { padding: 2rem; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>markdown-preview.nvim</h1>
+  <div class="sub">Open buffers (same set as bufferline / Shift+L) — click to open the preview. Refreshes every 3s.</div>
+  <table id="list">
+    <thead><tr><th>Buffer</th><th>#</th></tr></thead>
+    <tbody id="rows"><tr><td colspan="2" class="empty">Loading…</td></tr></tbody>
+  </table>
+</main>
+<script>
+  const rowsEl = document.getElementById('rows');
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  async function refresh() {
+    let data;
+    try {
+      const res = await fetch('/api/buffers');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      data = await res.json();
+    } catch (e) {
+      rowsEl.innerHTML = '<tr><td colspan="2" class="empty">Failed to load: ' + esc(e.message) + '</td></tr>';
+      return;
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      rowsEl.innerHTML = '<tr><td colspan="2" class="empty">No buffers open.</td></tr>';
+      return;
+    }
+    rowsEl.innerHTML = data.map(b =>
+      '<tr>' +
+      '<td><a href="/page/' + b.id + '">' + esc(b.name) + '</a>' +
+      (b.current ? '<span class="badge current">current</span>' : '') +
+      (b.previewing && !b.current ? '<span class="badge">previewing</span>' : '') +
+      (!b.current && b.visible ? '<span class="badge visible">in window</span>' : '') +
+      (b.modified ? '<span class="badge modified">modified</span>' : '') +
+      '<div class="path">' + esc(b.path) + '</div></td>' +
+      '<td>' + b.id + '</td>' +
+      '</tr>'
+    ).join('');
+  }
+
+  refresh();
+  setInterval(refresh, 3000);
+</script>
+</body>
+</html>
