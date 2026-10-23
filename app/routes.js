@@ -8,6 +8,22 @@ const use = function (route) {
   routes.unshift((req, res, next) => () => route(req, res, next))
 }
 
+// markdown file extensions, plus anything listed in g:mkdp_filetypes
+const mdExtensions = ['.md', '.mkd', '.mdown', '.mkdn', '.mdwn']
+
+const isMarkdownBuffer = (name, filetypes) => {
+  const ext = path.extname(name).toLowerCase()
+  if (mdExtensions.includes(ext)) return true
+  // match by filetype name without extension, e.g. "markdown"
+  const base = path.basename(name).toLowerCase()
+  return (filetypes || []).some(ft => ft && (base === ft.toLowerCase() || ext === '.' + ft.toLowerCase()))
+}
+
+const hasActiveClients = (clients, bufnr) => {
+  const list = clients[bufnr]
+  return !!(list && list.some(c => c.connected))
+}
+
 // /page/:number
 use((req, res, next) => {
   if (/\/page\/\d+/.test(req.asPath)) {
@@ -162,6 +178,250 @@ use(async (req, res, next) => {
       }
       logger.error('image not exists: ', imgPath)
     }
+  }
+  next()
+})
+
+// never let browsers cache the dynamic zk/preview responses (stale 302s)
+const noCache = (res) => {
+  res.setHeader('cache-control', 'no-store, max-age=0')
+  res.setHeader('pragma', 'no-cache')
+}
+
+// /api/buffers — same set as snacks picker "buffers" (space fb):
+// listed + loaded buffers, nofile excluded; current buffer included on top
+use(async (req, res, next) => {
+  if (req.asPath === '/api/buffers') {
+    noCache(res)
+    try {
+      const infos = await req.plugin.nvim.call('getbufinfo', [{ buflisted: 1, bufloaded: 1 }])
+      const currentBuf = await req.plugin.nvim.buffer
+      const list = []
+      for (const info of infos) {
+        const name = info.name
+        if (!name) continue
+        // mirror snacks: skip scratch/nofile buffers
+        let buftype = ''
+        try { buftype = await req.plugin.nvim.call('getbufvar', [info.bufnr, '&buftype']) } catch (e) {}
+        if (buftype === 'nofile') continue
+        list.push({
+          id: info.bufnr,
+          name: path.basename(name),
+          path: name,
+          visible: Array.isArray(info.windows) && info.windows.length > 0,
+          previewing: hasActiveClients(req.clients, info.bufnr),
+          current: info.bufnr === currentBuf.id,
+          modified: !!info.changed
+        })
+      }
+      // current buffer first, then visible/previewed ones, then by bufnr
+      list.sort((a, b) => ((b.current - a.current) || ((b.visible + b.previewing) - (a.visible + a.previewing))) || (a.id - b.id))
+      res.setHeader('content-type', 'application/json')
+      return res.end(JSON.stringify(list))
+    } catch (e) {
+      logger.error('list buffers fail: ', e)
+      res.statusCode = 500
+      return res.end(JSON.stringify({ error: String(e) }))
+    }
+  }
+  next()
+})
+
+// / — index page listing markdown + active buffers
+use((req, res, next) => {
+  if (req.asPath === '/' || req.asPath === '/index.html') {
+    const fpath = path.join(__dirname, 'index-page.html')
+    if (fs.existsSync(fpath)) {
+      return fs.createReadStream(fpath).pipe(res)
+    }
+  }
+  next()
+})
+
+// ---------------------------------------------------------------------------
+// zk wiki-links: resolve [[target]] links to live preview pages
+// ---------------------------------------------------------------------------
+
+// notebook root cache (per nvim session; recomputed when empty or stale)
+let zkRootCache = ''
+
+const getZkRoot = async (plugin, bufferName) => {
+  if (zkRootCache && fs.existsSync(path.join(zkRootCache, '.zk'))) return zkRootCache
+  zkRootCache = ''
+  // prefer the notebook root of the current buffer via zk-nvim's helper
+  try {
+    const root = await plugin.nvim.call('zk#util#notebook_root', [bufferName || ''])
+    if (root && fs.existsSync(path.join(root, '.zk'))) {
+      zkRootCache = root
+      return root
+    }
+  } catch (e) {
+    // zk-nvim not loaded; fall through to manual walk
+  }
+  // fallback: walk up from the buffer path looking for .zk/
+  let dir = bufferName ? path.dirname(bufferName) : ''
+  while (dir && dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, '.zk'))) {
+      zkRootCache = dir
+      return dir
+    }
+    dir = path.dirname(dir)
+  }
+  return ''
+}
+
+// bounded basename search under the notebook's note dirs (cached)
+const zkNameCache = {} // basename -> abs path | null
+
+const findNoteByBasename = async (root, target) => {
+  const base = path.basename(target).toLowerCase()
+  if (base in zkNameCache) return zkNameCache[base]
+  const dirs = ['notes', 'resources', 'mocs', 'questions']
+  let found = null
+  for (const d of dirs) {
+    const dirPath = path.join(root, d)
+    if (!fs.existsSync(dirPath)) continue
+    // recursive scan with entry cap; descend into ALL subdirs first,
+    // then match .md files by basename (dir names don't end in .md, so
+    // the directory check must come before the extension filter)
+    const stack = [dirPath]
+    let scanned = 0
+    while (stack.length && scanned < 20000) {
+      const cur = stack.pop()
+      let entries
+      try { entries = fs.readdirSync(cur, { withFileTypes: true }) } catch (e) { continue }
+      for (const ent of entries) {
+        if (ent.isDirectory()) {
+          stack.push(path.join(cur, ent.name))
+          continue
+        }
+        scanned++
+        const n = ent.name.toLowerCase()
+        if (n.endsWith('.md') && (n === base + '.md' || n === base)) {
+          found = path.join(cur, ent.name)
+          break
+        }
+      }
+      if (found) break
+    }
+    if (found) break
+  }
+  zkNameCache[base] = found
+  return found
+}
+
+// find an already-open buffer for an absolute path via one getbufinfo() call
+const findOpenBufnr = async (nvim, abs) => {
+  try {
+    const infos = await nvim.call('getbufinfo', [{ buflisted: 1, bufloaded: 1 }])
+    for (const info of infos) {
+      if (info.name && path.resolve(info.name) === path.resolve(abs)) return info.bufnr
+    }
+  } catch (e) {}
+  return -1
+}
+
+// /api/zk/resolve?target=<wiki-link target> — 302 to the note's preview
+use(async (req, res, next) => {
+  if (req.asPath === '/api/zk/resolve') {
+    const query = (req.url.split('?')[1] || '')
+    const params = new URLSearchParams(query)
+    const target = params.get('target') || ''
+    noCache(res)
+    if (!target) {
+      res.statusCode = 400
+      return res.end('missing target')
+    }
+    try {
+      const bufferName = await req.plugin.nvim.call('expand', ['%:p'])
+      const root = await getZkRoot(req.plugin, bufferName)
+      if (!root) {
+        res.statusCode = 302
+        return res.end()
+      }
+      // candidate 1: direct path under root (handles "recall/foo" style)
+      const direct = path.join(root, target + '.md')
+      let abs = ''
+      if (fs.existsSync(direct)) {
+        abs = direct
+      } else {
+        // candidate 2: basename search across note dirs
+        abs = await findNoteByBasename(root, target) || ''
+      }
+      if (!abs) {
+        res.statusCode = 302
+        res.setHeader('location', '/zk/dead?target=' + encodeURIComponent(target))
+        return res.end()
+      }
+      // already open? jump straight to its preview page (single getbufinfo call)
+      const bufnr = await findOpenBufnr(req.plugin.nvim, abs)
+      if (bufnr !== -1) {
+        res.statusCode = 302
+        res.setHeader('location', '/page/' + bufnr)
+      } else {
+        res.statusCode = 302
+        res.setHeader('location', '/zk/open?path=' + encodeURIComponent(abs))
+      }
+      return res.end()
+    } catch (e) {
+      logger.error('zk resolve fail: ', e)
+      res.statusCode = 500
+      return res.end(JSON.stringify({ error: String(e) }))
+    }
+  }
+  next()
+})
+
+// /zk/open?path=<abs> — open the note in nvim, then redirect to its preview
+use(async (req, res, next) => {
+  if (req.asPath === '/zk/open') {
+    const query = (req.url.split('?')[1] || '')
+    const params = new URLSearchParams(query)
+    const abs = params.get('path') || ''
+    noCache(res)
+    if (!abs || !fs.existsSync(abs)) {
+      res.statusCode = 302
+      res.setHeader('location', '/zk/dead?target=' + encodeURIComponent(path.basename(abs)))
+      return res.end()
+    }
+    try {
+      // idempotent: if it became open in the meantime, skip :edit entirely
+      let bufnr = await findOpenBufnr(req.plugin.nvim, abs)
+      if (bufnr === -1) {
+        await req.plugin.nvim.command('edit ' + req.plugin.nvim.call('fnameescape', [abs]))
+        const currentBuf = await req.plugin.nvim.buffer
+        bufnr = currentBuf && typeof currentBuf.id !== 'undefined' ? currentBuf.id : currentBuf
+      }
+      res.statusCode = 302
+      res.setHeader('location', '/page/' + bufnr)
+      return res.end()
+    } catch (e) {
+      logger.error('zk open fail: ', e)
+      res.statusCode = 500
+      return res.end(JSON.stringify({ error: String(e) }))
+    }
+  }
+  next()
+})
+
+// /zk/dead?target=<t> — note not found page
+use((req, res, next) => {
+  if (req.asPath === '/zk/dead') {
+    const query = (req.url.split('?')[1] || '')
+    const params = new URLSearchParams(query)
+    const target = params.get('target') || ''
+    noCache(res)
+    res.setHeader('content-type', 'text/html')
+    return res.end(
+      '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+      '<title>note not found</title>' +
+      '<style>body{font-family:sans-serif;max-width:600px;margin:3rem auto;padding:0 1rem;color:#4c4f69;background:#eff1f5}' +
+      'code{background:#fff;padding:.2rem .5rem;border-radius:4px}</style></head><body>' +
+      '<h1>Note not found</h1>' +
+      '<p>No note matches <code>' + target.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])) + '</code>.</p>' +
+      '<p><a href="/">Back to buffer list</a></p></body></html>'
+    )
   }
   next()
 })

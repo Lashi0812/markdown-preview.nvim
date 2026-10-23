@@ -3,6 +3,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const tslib_1 = require("tslib");
 const neovim_1 = require("@chemzqm/neovim");
 const logger = require('../util/logger')('attach'); // tslint:disable-line
+// convert zk wiki-links [[target|label]] / [[target]] into markdown links
+// resolved server-side (see routes.js /api/zk/resolve)
+const transformWikiLinks = (lines) => {
+    if (!Array.isArray(lines))
+        return lines;
+    return lines.map(line => line.replace(/\[\[([^\[\]|#]+)(?:#[^\[\]|]*)?(?:\|([^\[\]]+))?\]\]/g, (m, target, label) => {
+        const t = target.trim();
+        const l = (label || t).trim();
+        return '[' + l.replace(/[[\]]/g, ' ') + '](/api/zk/resolve?target=' + encodeURIComponent(t) + ')';
+    }));
+};
 let app;
 function default_1(options) {
     const nvim = (0, neovim_1.attach)(options);
@@ -20,7 +31,7 @@ function default_1(options) {
             const pageTitle = yield nvim.getVar('mkdp_page_title');
             const theme = yield nvim.getVar('mkdp_theme');
             const name = yield buffer.name;
-            const content = yield buffer.getLines();
+            const content = transformWikiLinks(yield buffer.getLines());
             const currentBuffer = yield nvim.buffer;
             app.refreshPage({
                 bufnr,

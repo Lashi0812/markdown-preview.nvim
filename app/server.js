@@ -11,6 +11,20 @@ exports.run = function () {
 
   let clients = {}
 
+  // convert zk wiki-links [[target|label]] / [[target]] into markdown links
+  // that the server can resolve to live preview pages (see /api/zk/resolve)
+  const transformWikiLinks = (lines) => {
+    if (!Array.isArray(lines)) return lines
+    return lines.map(line => line.replace(
+      /\[\[([^\[\]|#]+)(?:#[^\[\]|]*)?(?:\|([^\[\]]+))?\]\]/g,
+      (m, target, label) => {
+        const t = target.trim()
+        const l = (label || t).trim()
+        return '[' + l.replace(/[[\]]/g, ' ') + '](/api/zk/resolve?target=' + encodeURIComponent(t) + ')'
+      }
+    ))
+  }
+
   const openUrl = (url, browser) => {
     const handler = opener(url, browser)
     handler.on('error', (err) => {
@@ -44,6 +58,8 @@ exports.run = function () {
     req.mkcss = await plugin.nvim.getVar('mkdp_markdown_css')
     req.hicss = await plugin.nvim.getVar('mkdp_highlight_css')
     req.custImgPath = await plugin.nvim.getVar('mkdp_images_path')
+    // connected preview clients, keyed by bufnr (for the index page)
+    req.clients = clients
     // routes
     routes(req, res)
   })
@@ -73,7 +89,7 @@ exports.run = function () {
         const pageTitle = await plugin.nvim.getVar('mkdp_page_title')
         const theme = await plugin.nvim.getVar('mkdp_theme')
         const name = await buffer.name
-        const content = await buffer.getLines()
+        const content = transformWikiLinks(await buffer.getLines())
         const currentBuffer = await plugin.nvim.buffer
         client.emit('refresh_content', {
           options,
