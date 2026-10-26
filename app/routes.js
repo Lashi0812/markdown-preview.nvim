@@ -385,12 +385,32 @@ use(async (req, res, next) => {
       return res.end()
     }
     try {
-      // idempotent: if it became open in the meantime, skip :edit entirely
+      // idempotent: if it became open in the meantime, skip opening entirely
       let bufnr = await findOpenBufnr(req.plugin.nvim, abs)
       if (bufnr === -1) {
-        await req.plugin.nvim.command('edit ' + req.plugin.nvim.call('fnameescape', [abs]))
-        const currentBuf = await req.plugin.nvim.buffer
-        bufnr = currentBuf && typeof currentBuf.id !== 'undefined' ? currentBuf.id : currentBuf
+        // Open WITHOUT firing BufRead autocmds: bufadd() returns the bufnr
+        // directly and loads nothing, so no plugin/LSP code runs between
+        // the open and our redirect.
+        const newBuf = await req.plugin.nvim.call('bufadd', [abs])
+        if (newBuf && typeof newBuf.id !== 'undefined') {
+          bufnr = newBuf.id
+        } else if (typeof newBuf === 'number' && newBuf > 0) {
+          bufnr = newBuf
+        } else {
+          // resolve by path as a fallback
+          const infos = await req.plugin.nvim.call('getbufinfo', [{ buflisted: 1 }])
+          const hit = infos.find(i => i.name && path.resolve(i.name) === path.resolve(abs))
+          bufnr = hit ? hit.bufnr : -1
+        }
+        if (bufnr !== -1) {
+          // load the content without autocmds
+          try { await req.plugin.nvim.call('bufload', [bufnr]) } catch (e) {}
+        }
+      }
+      if (bufnr === -1) {
+        res.statusCode = 302
+        res.setHeader('location', '/zk/dead?target=' + encodeURIComponent(path.basename(abs)))
+        return res.end()
       }
       res.statusCode = 302
       res.setHeader('location', '/page/' + bufnr)
